@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Validador de LPN</title>
+  <style>
+    body { font-family: sans-serif; padding: 1rem; }
+    table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+    th { background: #f0f0f0; }
+    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+             background: rgba(0,0,0,0.5); align-items: center; justify-content: center; }
+    .modal-content { background: white; padding: 2rem; border-radius: 8px; width: 300px; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <h1>Validador de LPN</h1>
+
+  <input type="file" id="fileInput" accept=".csv">
+  <input type="text" id="scanner" placeholder="Escanea LPN o Pallet" autofocus>
+  <button onclick="downloadCSV()">Descargar Validaciones</button>
+
+  <table id="results">
+    <thead>
+      <tr>
+        <th>LPN</th>
+        <th>Pallet</th>
+        <th>Ubicación</th>
+        <th>Estado</th>
+        <th>Ubicación Encontrada</th>
+        <th>Fecha</th>
+        <th>Eliminar</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <div class="modal" id="modal">
+    <div class="modal-content">
+      <p id="modalText"></p>
+      <select id="estadoSelect">
+        <option value="consumido">Consumido</option>
+        <option value="en otra ubicacion">En otra ubicación</option>
+        <option value="perdido">Perdido</option>
+        <option value="cancelado">Cancelado</option>
+      </select>
+      <input type="text" id="ubicacionExtra" placeholder="Ubicación encontrada (si aplica)" class="hidden">
+      <br><br>
+      <button onclick="guardarManual()">Guardar</button>
+    </div>
+  </div>
+
+  <script>
+    let base = [];
+    let resultados = [];
+    let entradaPendiente = "";
+
+    document.getElementById('fileInput').addEventListener('change', function(e) {
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const rows = e.target.result.split('\n').slice(1); // omitimos encabezado
+        base = rows.map(row => {
+          const cols = row.split(',');
+          return { lpn: cols[0]?.trim(), pallet: cols[1]?.trim(), ubicacion: cols[2]?.trim() };
+        }).filter(x => x.lpn);
+        alert('Archivo cargado con ' + base.length + ' registros');
+      };
+      reader.readAsText(e.target.files[0]);
+    });
+
+    document.getElementById('scanner').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        const entrada = e.target.value.trim().toUpperCase();
+        e.target.value = '';
+
+        const encontrado = base.find(x => x.lpn === entrada || x.pallet === entrada);
+
+        if (encontrado) {
+          const estado = "encontrado";
+          agregarResultado(encontrado.lpn, encontrado.pallet, encontrado.ubicacion, estado, '', new Date());
+        } else {
+          entradaPendiente = entrada;
+          mostrarModal(entrada);
+        }
+      }
+    });
+
+    function mostrarModal(lpn) {
+      document.getElementById('modal').style.display = 'flex';
+      document.getElementById('modalText').innerText = `LPN/Pallet "${lpn}" no encontrado. ¿Qué deseas hacer?`;
+      document.getElementById('estadoSelect').value = 'consumido';
+      document.getElementById('ubicacionExtra').value = '';
+      document.getElementById('ubicacionExtra').classList.add('hidden');
+    }
+
+    document.getElementById('estadoSelect').addEventListener('change', function() {
+      const valor = this.value;
+      document.getElementById('ubicacionExtra').classList.toggle('hidden', !['en otra ubicacion', 'perdido', 'cancelado'].includes(valor));
+    });
+
+    function guardarManual() {
+      const estado = document.getElementById('estadoSelect').value;
+      const ubicacionExtra = document.getElementById('ubicacionExtra').value.trim();
+      const ubicacion = ['en otra ubicacion', 'perdido', 'cancelado'].includes(estado) ? ubicacionExtra : '';
+      agregarResultado(entradaPendiente, '', '', estado, ubicacion, new Date());
+      document.getElementById('modal').style.display = 'none';
+    }
+
+    function agregarResultado(lpn, pallet, ubicacion, estado, ubicacionEncontrada, fecha) {
+      resultados.push({ lpn, pallet, ubicacion, estado, ubicacionEncontrada, fecha });
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td>${lpn}</td>
+        <td>${pallet}</td>
+        <td>${ubicacion}</td>
+        <td>${estado}</td>
+        <td>${ubicacionEncontrada}</td>
+        <td>${fecha.toLocaleString()}</td>
+        <td><button onclick="this.closest('tr').remove()">❌</button></td>
+      `;
+      document.querySelector('#results tbody').appendChild(row);
+    }
+
+    function downloadCSV() {
+      const filas = ["LPN,Pallet,Ubicacion,Estado,UbicacionEncontrada,Fecha"];
+      resultados.forEach(r => {
+        filas.push([r.lpn, r.pallet, r.ubicacion, r.estado, r.ubicacionEncontrada, r.fecha.toLocaleString()].join(','));
+      });
+      const blob = new Blob([filas.join('\n')], { type: 'text/csv' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'validaciones.csv';
+      link.click();
+    }
+  </script>
+</body>
+</html>
